@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cartela de Bingo</title>
+    <style>
+        :root {
+            --primary: #4A154B;
+            --secondary: #36C5F0;
+            --marked: #ECB22E;
+            --bg: #1a1a2e;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #fff;
+            margin-bottom: 5px;
+        }
+
+        .container {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 25px;
+            border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            text-align: center;
+        }
+
+        .bingo-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .header-cell {
+            background-color: var(--primary);
+            color: white;
+            font-weight: bold;
+            font-size: 1.5rem;
+            padding: 10px;
+            border-radius: 8px;
+        }
+
+        .cell {
+            background-color: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1.3rem;
+            font-weight: bold;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            user-select: none;
+        }
+
+        .cell:hover:not(.free-space) {
+            background-color: #eef7fc;
+            border-color: var(--secondary);
+        }
+
+        .cell.marked {
+            background-color: var(--marked);
+            color: white;
+            border-color: #d29916;
+        }
+
+        .cell.free-space {
+            background-color: #e2e8f0;
+            font-size: 0.9rem;
+            color: #4a5568;
+            cursor: default;
+        }
+
+        .btn {
+            background-color: var(--secondary);
+            color: white;
+            border: none;
+            padding: 12px 25px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 25px;
+            cursor: pointer;
+            margin-top: 25px;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background-color: #259dc2;
+        }
+
+        #message {
+            margin-top: 15px;
+            font-size: 1.2rem;
+            font-weight: bold;
+            color: #2b6cb0;
+            min-height: 30px;
+        }
+
+        #confetti-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 1;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="confetti-canvas"></canvas>
+
+    <div class="container">
+        <h1>Bingo</h1>
+        <div id="message">Marque os números sorteados!</div>
+
+        <div class="bingo-grid" id="bingoBoard">
+            <div class="header-cell">B</div>
+            <div class="header-cell">I</div>
+            <div class="header-cell">N</div>
+            <div class="header-cell">G</div>
+            <div class="header-cell">O</div>
+        </div>
+
+        <button class="btn" onclick="generateNewCard()">Gerar Nova Cartela</button>
+    </div>
+
+    <script>
+        const board = document.getElementById('bingoBoard');
+        const messageDiv = document.getElementById('message');
+        const canvas = document.getElementById('confetti-canvas');
+        const ctx = canvas.getContext('2d');
+        
+        const intervals = {
+            0: { min: 1, max: 15 },
+            1: { min: 16, max: 30 },
+            2: { min: 31, max: 45 },
+            3: { min: 46, max: 60 },
+            4: { min: 61, max: 75 }
+        };
+
+        let cardState = Array(5).fill(null).map(() => Array(5).fill(false));
+        let confettiParticles = [];
+        let animationFrameId = null;
+        let isAnimatingConfetti = false;
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        class Confetti {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * -canvas.height - 20;
+                this.size = Math.random() * 8 + 6;
+                this.color = `hsl(${Math.random() * 360}, 90%, 60%)`;
+                this.speed = Math.random() * 4 + 4;
+                this.angle = Math.random() * 360;
+                this.spin = Math.random() * 0.2 - 0.1;
+            }
+            update() {
+                this.y += this.speed;
+                this.angle += this.spin;
+                if (this.y > canvas.height) {
+                    this.y = -20;
+                    this.x = Math.random() * canvas.width;
+                }
+            }
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.angle);
+                ctx.fillStyle = this.color;
+                ctx.fillRect(-this.size/2, -this.size/2, this.size, this.size);
+                ctx.restore();
+            }
+        }
+
+        function startConfetti() {
+            if (isAnimatingConfetti) return;
+            isAnimatingConfetti = true;
+            confettiParticles = [];
+            for (let i = 0; i < 150; i++) {
+                confettiParticles.push(new Confetti());
+            }
+            function animate() {
+                if (!isAnimatingConfetti) return;
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                confettiParticles.forEach(p => {
+                    p.update();
+                    p.draw();
+                });
+                animationFrameId = requestAnimationFrame(animate);
+            }
+            animate();
+        }
+
+        function stopConfetti() {
+            isAnimatingConfetti = false;
+            cancelAnimationFrame(animationFrameId);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        }
+
+        function getRandomNumbers(min, max, count) {
+            let numbers = [];
+            while(numbers.length < count) {
+                let r = Math.floor(Math.random() * (max - min + 1)) + min;
+                if(numbers.indexOf(r) === -1) numbers.push(r);
+            }
+            return numbers.sort((a, b) => a - b);
+        }
+
+        function generateNewCard() {
+            while (board.children.length > 5) {
+                board.removeChild(board.lastChild);
+            }
+
+            cardState = Array(5).fill(null).map(() => Array(5).fill(false));
+            cardState[2][2] = true; 
+            stopConfetti();
+            
+            messageDiv.textContent = "Nova cartela gerada! Boa sorte!";
+            messageDiv.style.color = "#2b6cb0";
+
+            let columns = [];
+            for (let i = 0; i < 5; i++) {
+                columns.push(getRandomNumbers(intervals[i].min, intervals[i].max, 5));
+            }
+
+            for (let row = 0; row < 5; row++) {
+                for (let col = 0; col < 5; col++) {
+                    const cell = document.createElement('div');
+                    
+                    if (row === 2 && col === 2) {
+                        cell.className = "cell free-space";
+                        cell.textContent = "GRÁTIS";
+                    } else {
+                        cell.className = "cell";
+                        cell.textContent = columns[col][row];
+                        cell.addEventListener('click', () => toggleMark(cell, row, col));
+                    }
+                    board.appendChild(cell);
+                }
+            }
+        }
+
+        function toggleMark(cell, row, col) {
+            cell.classList.toggle('marked');
+            cardState[row][col] = cell.classList.contains('marked');
+            checkWinCondition();
+        }
+
+        function checkWinCondition() {
+            let totalMarked = 0;
+            for (let i = 0; i < 5; i++) {
+                for (let j = 0; j < 5; j++) {
+                    if (cardState[i][j]) totalMarked++;
+                }
+            }
+
+            if (totalMarked === 25) { 
+                messageDiv.textContent = "BINGO! Você ganhou!";
+                messageDiv.style.color = "#2f855a";
+                startConfetti(); 
+            } else {
+                messageDiv.textContent = "Continue marcando...";
+                messageDiv.style.color = "#2b6cb0";
+                stopConfetti();
+            }
+        }
+
+        generateNewCard();
+    </script>
+</body>
+</html>
